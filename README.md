@@ -1,50 +1,163 @@
-# Welcome to your Expo app 👋
+# Google Play Age Signals API - Investigation & Documentation
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+## Overview
 
-## Get started
+This repository documents the implementation and investigation of Google's Play Age Signals API (beta) in an Expo React Native application. It includes proof that the API is currently non-functional and won't be active until January 1, 2026.
 
-1. Install dependencies
+## Project Details
 
-   ```bash
-   npm install
-   ```
+- **Framework**: Expo (SDK 54)
+- **Platform**: Android
+- **Module**: Custom Expo module with Kotlin
+- **API**: Google Play Age Signals API `age-signals:0.0.1-beta01`
 
-2. Start the app
+## The Issue
 
-   ```bash
-   npx expo start
-   ```
+### Error Encountered
 
-In the output, you'll find options to open the app in a
+```
+Error: Age Signals Error: Not yet implemented.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+Exception Type: java.lang.UnsupportedOperationException
+Message: Not yet implemented.
+Error Code: null
+Cause: null
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### Initial Confusion
 
-## Learn more
+The error message "Not yet implemented" is **NOT** documented in Google's [official error codes](https://developer.android.com/google/play/age-signals/use-age-signals-api#handle-error-codes). The documented error codes are:
 
-To learn more about developing your project with Expo, look at the following resources:
+- `-1` API_NOT_AVAILABLE
+- `-2` PLAY_STORE_NOT_FOUND
+- `-3` NETWORK_ERROR
+- `-4` PLAY_SERVICES_NOT_FOUND
+- `-5` CANNOT_BIND_TO_SERVICE
+- `-6` PLAY_STORE_VERSION_OUTDATED
+- `-7` PLAY_SERVICES_VERSION_OUTDATED
+- `-8` CLIENT_TRANSIENT_ERROR
+- `-9` APP_NOT_OWNED
+- `-100` INTERNAL_ERROR
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+**None of these match our error.**
 
-## Join the community
+## The Investigation
 
-Join our community of developers creating universal apps.
+### What I Discovered
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Through debugging, I found the actual exception details:
+
+```kotlin
+Exception Type: java.lang.UnsupportedOperationException
+Message: Not yet implemented.
+Error Code: null
+```
+
+This is a `java.lang.UnsupportedOperationException` - a standard Java exception thrown when a method stub hasn't been implemented yet.
+
+## Potential Direct Proof from Google
+
+### Official Documentation Statement
+
+From Google's [Age Signals API Overview](https://developer.android.com/google/play/age-signals/overview) (Last updated October 9, 2025):
+
+> **"This documentation is being shared in advance of upcoming age verification bills in applicable US states going into effect on January 1, 2026 in Texas. The Play Age Signals API (beta) will return live responses for applicable users and the Age signals page will be available in Play Console after this date."**
+
+From [Use Age Signals API](https://developer.android.com/google/play/age-signals/use-age-signals-api) (Last updated October 10, 2025):
+
+> **"This documentation is being shared in advance of upcoming age verification bills in applicable US states going into effect on January 1, 2026 in Texas. The Play Age Signals API (beta) will return live responses for applicable users and the Age signals page will be available in Play Console after this date."**
+
+### What i believe this means
+
+1. **The library was released on October 8, 2025** - Available on Maven
+2. **Documentation published October 9-10, 2025** - For developers to prepare
+3. **Backend service NOT ACTIVE yet** - Potentially won't return real data until January 1, 2026?
+
+## Implementation
+
+### Gradle Dependency
+
+```gradle
+// modules/my-test-module/android/build.gradle
+dependencies {
+    implementation 'com.google.android.play:age-signals:0.0.1-beta01'
+}
+```
+
+### Expo Config
+
+```json
+{
+  "expo": {
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraMavenRepos": [
+              "https://maven.google.com"
+            ]
+          }
+        }
+      ]
+    ]
+  }
+}
+```
+
+### Kotlin Module Code
+
+See `my-test-module/android/src/main/java/expo/modules/mytestmodule/MyTestModule.kt` for the full implementation.
+
+Key function:
+```kotlin
+AsyncFunction("getAgeSignals") { promise: Promise ->
+  try {
+    val context = appContext.reactContext
+    if (context == null) {
+      promise.reject("ERROR", "Context is null", null)
+      return@AsyncFunction
+    }
+
+    val ageSignalsManager = AgeSignalsManagerFactory.create(context)
+    
+    ageSignalsManager
+      .checkAgeSignals(AgeSignalsRequest.builder().build())
+      .addOnSuccessListener { ageSignalsResult ->
+        // Handle success
+      }
+      .addOnFailureListener { exception ->
+        // Currently throws: UnsupportedOperationException: Not yet implemented
+      }
+  } catch (e: Exception) {
+    promise.reject("ERROR", "Failed: ${e.message}", e)
+  }
+}
+```
+
+## Workaround for Development
+
+Until January 1, 2026, use mock data:
+
+```kotlin
+AsyncFunction("getAgeSignals") { promise: Promise ->
+  try {
+    val context = appContext.reactContext
+    if (context == null) {
+      promise.reject("ERROR", "Context is null", null)
+      return@AsyncFunction
+    }
+
+    // Mock response until API is active
+    promise.resolve(mapOf(
+      "userStatus" to "API_NOT_ACTIVE_UNTIL_JAN_2026",
+      "installId" to "mock-${System.currentTimeMillis()}",
+      "timestamp" to System.currentTimeMillis(),
+      "note" to "Google Age Signals API backend activates January 1, 2026"
+    ))
+    
+  } catch (e: Exception) {
+    promise.reject("ERROR", "Failed: ${e.message}", e)
+  }
+}
+```
