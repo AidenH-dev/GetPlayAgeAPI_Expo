@@ -41,7 +41,17 @@
           }
         }
       ],
-      "./plugins/withVibration"
+      "./plugins/withVibration",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraMavenRepos": [
+              "https://maven.google.com"
+            ]
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

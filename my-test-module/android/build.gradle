@@ -39,4 +39,7 @@ android {
   }
 }
 
-// No extra dependencies for now
+dependencies {
+  // Correct Age Signals API dependency
+  implementation 'com.google.android.play:age-signals:0.0.1-beta01'
+}

@@ -16,25 +16,25 @@ export default function Index() {
     setResult(JSON.stringify(info, null, 2));
   };
 
+  const testVibrate = () => {
+    const message = MyTestModule.vibrate(500);
+    setResult(message);
+  };
+
   const testAgeSignals = async () => {
     try {
       setLoading(true);
-      setResult('Fetching age signals...');
+      setResult('Fetching age signals from Google Play...');
       
-      // Check if available first
-      const isAvailable = MyTestModule.isAgeSignalsAvailable();
+      // Log what functions are available
+      console.log('Available functions:', Object.keys(MyTestModule));
       
-      if (!isAvailable) {
-        setResult('Age Signals API is not available on this device');
-        setLoading(false);
-        return;
-      }
-      
-      // Get age signals
+      // Try calling it
       const ageData = await MyTestModule.getAgeSignals();
       setResult(JSON.stringify(ageData, null, 2));
     } catch (error: any) {
-      setResult(`Error: ${error.message || error}`);
+      console.log('Full error:', error);
+      setResult(`Error: ${error.message || error}\n\n${error.stack || ''}`);
     } finally {
       setLoading(false);
     }
@@ -42,13 +42,14 @@ export default function Index() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Test Android Age Signals API</Text>
+      <Text style={styles.title}>Test Android Module</Text>
       
       <View style={styles.buttonContainer}>
         <Button title="Hello" onPress={testHello} />
         <Button title="Get Device Info" onPress={testDeviceInfo} />
+        <Button title="Vibrate" onPress={testVibrate} />
         <Button 
-          title="Get Age Signals" 
+          title="Get Age Signals (Beta)" 
           onPress={testAgeSignals} 
           disabled={loading}
         />
