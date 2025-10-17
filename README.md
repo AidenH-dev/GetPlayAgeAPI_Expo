@@ -106,95 +106,199 @@ See `my-test-module/android/src/main/java/expo/modules/mytestmodule/MyTestModule
 Key function:
 ```kotlin
 AsyncFunction("getAgeSignals") { promise: Promise ->
-      android.util.Log.d("MyTestModule", "getAgeSignals called")
-      
-      try {
-        val context = appContext.reactContext
-        android.util.Log.d("MyTestModule", "Context: $context")
-        
-        if (context == null) {
-          promise.reject("ERROR", "Context is null", null)
-          return@AsyncFunction
-        }
+  // Log the function entry for debugging
+  android.util.Log.d("MyTestModule", "getAgeSignals called")
+  
+  try {
+    // ============================================================================
+    // SECTION 1: Context Validation
+    // ============================================================================
+    // Get the React Native context - this is needed to create the AgeSignalsManager
+    // The context provides access to Android system services and app information
+    val context = appContext.reactContext
+    android.util.Log.d("MyTestModule", "Context: $context")
     
-        android.util.Log.d("MyTestModule", "Creating AgeSignalsManager")
-        val ageSignalsManager: AgeSignalsManager = AgeSignalsManagerFactory.create(context)
-        android.util.Log.d("MyTestModule", "Manager created: $ageSignalsManager")
+    // Validate that context exists - without it, we cannot proceed
+    // This can be null if the app is not fully initialized or has been destroyed
+    if (context == null) {
+      promise.reject("ERROR", "Context is null", null)
+      return@AsyncFunction
+    }
+
+    // ============================================================================
+    // SECTION 2: Age Signals Manager Creation
+    // ============================================================================
+    // Create the AgeSignalsManager using Google's factory method
+    // This manager handles communication with Google Play Services
+    android.util.Log.d("MyTestModule", "Creating AgeSignalsManager")
+    val ageSignalsManager: AgeSignalsManager = AgeSignalsManagerFactory.create(context)
+    android.util.Log.d("MyTestModule", "Manager created: $ageSignalsManager")
+    
+    // ============================================================================
+    // SECTION 3: Timeout Mechanism Setup
+    // ============================================================================
+    // Track whether the promise has been resolved/rejected to prevent multiple calls
+    // CRITICAL: Calling promise.resolve() or promise.reject() twice causes crashes
+    var isResolved = false
+    
+    // Create a handler on the main (UI) thread to manage the timeout
+    val handler = Handler(Looper.getMainLooper())
+    
+    // Define what happens when the request times out (after 5 seconds)
+    // This prevents the app from hanging indefinitely if the API doesn't respond
+    val timeoutRunnable = Runnable {
+      if (!isResolved) {
+        isResolved = true
+        android.util.Log.d("MyTestModule", "Age Signals request timed out")
         
-        var isResolved = false
-        val handler = Handler(Looper.getMainLooper())
-        
-        val timeoutRunnable = Runnable {
-          if (!isResolved) {
-            isResolved = true
-            android.util.Log.d("MyTestModule", "Age Signals request timed out")
-            promise.reject("TIMEOUT", "Timed out", null)
-          }
-        }
-        
-        handler.postDelayed(timeoutRunnable, 5000)
-        
-        ageSignalsManager
-          .checkAgeSignals(AgeSignalsRequest.builder().build())
-          .addOnSuccessListener { ageSignalsResult ->
-            if (!isResolved) {
-              isResolved = true
-              handler.removeCallbacks(timeoutRunnable)
-              
-              android.util.Log.d("MyTestModule", "Age Signals success")
-              
-              val result = mutableMapOf<String, Any?>(
-                "userStatus" to ageSignalsResult.userStatus().toString(),
-                "installId" to ageSignalsResult.installId(),
-                "timestamp" to System.currentTimeMillis()
-              )
-              
-              val ageLower = ageSignalsResult.ageLower()
-              val ageUpper = ageSignalsResult.ageUpper()
-              
-              if (ageLower != null) result["ageLower"] = ageLower
-              if (ageUpper != null) result["ageUpper"] = ageUpper
-              
-              val approvalDate = ageSignalsResult.mostRecentApprovalDate()
-              if (approvalDate != null) result["mostRecentApprovalDate"] = approvalDate
-              
-              promise.resolve(result)
-            }
-          }
-          .addOnFailureListener { exception ->
-            if (!isResolved) {
-              isResolved = true
-              handler.removeCallbacks(timeoutRunnable)
-              
-              android.util.Log.e("MyTestModule", "Age Signals error - Full details:")
-              android.util.Log.e("MyTestModule", "Exception type: ${exception.javaClass.name}")
-              android.util.Log.e("MyTestModule", "Exception message: ${exception.message}")
-              android.util.Log.e("MyTestModule", "Exception cause: ${exception.cause}")
-              android.util.Log.e("MyTestModule", "Exception stacktrace:", exception)
-              
-              val errorCode = try {
-                val apiException = exception as? com.google.android.gms.common.api.ApiException
-                apiException?.statusCode
-              } catch (e: Exception) {
-                null
-              }
-              
-              android.util.Log.e("MyTestModule", "Possible error code: $errorCode")
-              
-              val errorMessage = """
-                Exception Type: ${exception.javaClass.name}
-                Message: ${exception.message}
-                Error Code: $errorCode
-                Cause: ${exception.cause}
-              """.trimIndent()
-              
-              promise.reject("AGE_SIGNALS_ERROR", errorMessage, exception)
-            }
-          }
-        
-      } catch (e: Exception) {
-        android.util.Log.e("MyTestModule", "Exception in getAgeSignals setup", e)
-        promise.reject("ERROR", "Failed: ${e.javaClass.name}: ${e.message}", e)
+        // Reject the promise with a timeout error
+        // NOTE: Currently this will likely fire because the API throws exceptions
+        // immediately rather than hanging, but it's good practice to have it
+        promise.reject("TIMEOUT", "Timed out", null)
       }
     }
+    
+    // Schedule the timeout to run after 5000ms (5 seconds)
+    handler.postDelayed(timeoutRunnable, 5000)
+    
+    // ============================================================================
+    // SECTION 4: Age Signals API Request
+    // ============================================================================
+    // Make the actual API request to Google Play Services
+    // This returns a Task object that handles async callbacks
+    ageSignalsManager
+      .checkAgeSignals(AgeSignalsRequest.builder().build())
+      
+      // ----------------------------------------------------------------------------
+      // SUCCESS HANDLER
+      // ----------------------------------------------------------------------------
+      // This callback is triggered if the API successfully returns age signals
+      // NOTE: As of Oct 2025, this will NOT be called until Jan 1, 2026
+      .addOnSuccessListener { ageSignalsResult ->
+        // Check if we haven't already resolved/rejected the promise
+        if (!isResolved) {
+          isResolved = true
+          
+          // Cancel the timeout since we got a response
+          handler.removeCallbacks(timeoutRunnable)
+          
+          android.util.Log.d("MyTestModule", "Age Signals success")
+          
+          // -----------------------------------------------------------------------
+          // Build the result object to send back to JavaScript
+          // -----------------------------------------------------------------------
+          val result = mutableMapOf<String, Any?>(
+            // User's verification status (VERIFIED, SUPERVISED, UNKNOWN, etc.)
+            "userStatus" to ageSignalsResult.userStatus().toString(),
+            
+            // Unique ID for this user install (used for tracking parental approvals)
+            "installId" to ageSignalsResult.installId(),
+            
+            // Add current timestamp for tracking when the data was retrieved
+            "timestamp" to System.currentTimeMillis()
+          )
+          
+          // -----------------------------------------------------------------------
+          // Add optional age range fields (only present for supervised accounts)
+          // -----------------------------------------------------------------------
+          // Lower bound of user's age range (e.g., 13 in range 13-15)
+          val ageLower = ageSignalsResult.ageLower()
+          
+          // Upper bound of user's age range (e.g., 15 in range 13-15)
+          // Note: This is null if the user is 18+ even with a supervised account
+          val ageUpper = ageSignalsResult.ageUpper()
+          
+          // Only add these fields if they're not null to avoid sending undefined to JS
+          if (ageLower != null) result["ageLower"] = ageLower
+          if (ageUpper != null) result["ageUpper"] = ageUpper
+          
+          // -----------------------------------------------------------------------
+          // Add most recent approval date (for supervised accounts)
+          // -----------------------------------------------------------------------
+          // Date when parent last approved significant app changes
+          // Only present for supervised accounts with approval status
+          val approvalDate = ageSignalsResult.mostRecentApprovalDate()
+          if (approvalDate != null) result["mostRecentApprovalDate"] = approvalDate
+          
+          // Resolve the promise and send the data back to JavaScript
+          promise.resolve(result)
+        }
+      }
+      
+      // ----------------------------------------------------------------------------
+      // FAILURE HANDLER
+      // ----------------------------------------------------------------------------
+      // This callback is triggered if the API request fails
+      // CURRENTLY: This is being called with UnsupportedOperationException
+      .addOnFailureListener { exception ->
+        // Check if we haven't already resolved/rejected the promise
+        if (!isResolved) {
+          isResolved = true
+          
+          // Cancel the timeout since we got a response (even though it's an error)
+          handler.removeCallbacks(timeoutRunnable)
+          
+          // -----------------------------------------------------------------------
+          // Log comprehensive error information for debugging
+          // -----------------------------------------------------------------------
+          android.util.Log.e("MyTestModule", "Age Signals error - Full details:")
+          
+          // Log the exception class name (e.g., UnsupportedOperationException)
+          android.util.Log.e("MyTestModule", "Exception type: ${exception.javaClass.name}")
+          
+          // Log the error message (currently: "Not yet implemented")
+          android.util.Log.e("MyTestModule", "Exception message: ${exception.message}")
+          
+          // Log the underlying cause (currently null)
+          android.util.Log.e("MyTestModule", "Exception cause: ${exception.cause}")
+          
+          // Log the full stack trace for detailed debugging
+          android.util.Log.e("MyTestModule", "Exception stacktrace:", exception)
+          
+          // -----------------------------------------------------------------------
+          // Attempt to extract Google's error code (if available)
+          // -----------------------------------------------------------------------
+          // Try to cast to ApiException to get Google's documented error codes
+          // Error codes like -9 (APP_NOT_OWNED), -1 (API_NOT_AVAILABLE), etc.
+          // Currently returns null because UnsupportedOperationException is not ApiException
+          val errorCode = try {
+            val apiException = exception as? com.google.android.gms.common.api.ApiException
+            apiException?.statusCode
+          } catch (e: Exception) {
+            // If casting fails, just return null
+            null
+          }
+          
+          android.util.Log.e("MyTestModule", "Possible error code: $errorCode")
+          
+          // -----------------------------------------------------------------------
+          // Build detailed error message for JavaScript
+          // -----------------------------------------------------------------------
+          // Create a comprehensive error message with all available information
+          // This helps with debugging on the JavaScript side
+          val errorMessage = """
+            Exception Type: ${exception.javaClass.name}
+            Message: ${exception.message}
+            Error Code: $errorCode
+            Cause: ${exception.cause}
+          """.trimIndent()
+          
+          // Reject the promise with the error details
+          // JavaScript will receive this as a rejected Promise
+          promise.reject("AGE_SIGNALS_ERROR", errorMessage, exception)
+        }
+      }
+    
+  } catch (e: Exception) {
+    // ============================================================================
+    // SECTION 5: Catch-All Error Handler
+    // ============================================================================
+    // This catches any exceptions during setup (before the API call)
+    // For example: if AgeSignalsManagerFactory.create() fails
+    android.util.Log.e("MyTestModule", "Exception in getAgeSignals setup", e)
+    
+    // Reject the promise with setup error details
+    promise.reject("ERROR", "Failed: ${e.javaClass.name}: ${e.message}", e)
+  }
+}
 ```
