@@ -112,25 +112,95 @@ See `my-test-module/android/src/main/java/expo/modules/mytestmodule/MyTestModule
 Key function:
 ```kotlin
 AsyncFunction("getAgeSignals") { promise: Promise ->
-  try {
-    val context = appContext.reactContext
-    if (context == null) {
-      promise.reject("ERROR", "Context is null", null)
-      return@AsyncFunction
-    }
-
-    val ageSignalsManager = AgeSignalsManagerFactory.create(context)
+      android.util.Log.d("MyTestModule", "getAgeSignals called")
+      
+      try {
+        val context = appContext.reactContext
+        android.util.Log.d("MyTestModule", "Context: $context")
+        
+        if (context == null) {
+          promise.reject("ERROR", "Context is null", null)
+          return@AsyncFunction
+        }
     
-    ageSignalsManager
-      .checkAgeSignals(AgeSignalsRequest.builder().build())
-      .addOnSuccessListener { ageSignalsResult ->
-        // Handle success
+        android.util.Log.d("MyTestModule", "Creating AgeSignalsManager")
+        val ageSignalsManager: AgeSignalsManager = AgeSignalsManagerFactory.create(context)
+        android.util.Log.d("MyTestModule", "Manager created: $ageSignalsManager")
+        
+        var isResolved = false
+        val handler = Handler(Looper.getMainLooper())
+        
+        val timeoutRunnable = Runnable {
+          if (!isResolved) {
+            isResolved = true
+            android.util.Log.d("MyTestModule", "Age Signals request timed out")
+            promise.reject("TIMEOUT", "Timed out", null)
+          }
+        }
+        
+        handler.postDelayed(timeoutRunnable, 5000)
+        
+        ageSignalsManager
+          .checkAgeSignals(AgeSignalsRequest.builder().build())
+          .addOnSuccessListener { ageSignalsResult ->
+            if (!isResolved) {
+              isResolved = true
+              handler.removeCallbacks(timeoutRunnable)
+              
+              android.util.Log.d("MyTestModule", "Age Signals success")
+              
+              val result = mutableMapOf<String, Any?>(
+                "userStatus" to ageSignalsResult.userStatus().toString(),
+                "installId" to ageSignalsResult.installId(),
+                "timestamp" to System.currentTimeMillis()
+              )
+              
+              val ageLower = ageSignalsResult.ageLower()
+              val ageUpper = ageSignalsResult.ageUpper()
+              
+              if (ageLower != null) result["ageLower"] = ageLower
+              if (ageUpper != null) result["ageUpper"] = ageUpper
+              
+              val approvalDate = ageSignalsResult.mostRecentApprovalDate()
+              if (approvalDate != null) result["mostRecentApprovalDate"] = approvalDate
+              
+              promise.resolve(result)
+            }
+          }
+          .addOnFailureListener { exception ->
+            if (!isResolved) {
+              isResolved = true
+              handler.removeCallbacks(timeoutRunnable)
+              
+              android.util.Log.e("MyTestModule", "Age Signals error - Full details:")
+              android.util.Log.e("MyTestModule", "Exception type: ${exception.javaClass.name}")
+              android.util.Log.e("MyTestModule", "Exception message: ${exception.message}")
+              android.util.Log.e("MyTestModule", "Exception cause: ${exception.cause}")
+              android.util.Log.e("MyTestModule", "Exception stacktrace:", exception)
+              
+              val errorCode = try {
+                val apiException = exception as? com.google.android.gms.common.api.ApiException
+                apiException?.statusCode
+              } catch (e: Exception) {
+                null
+              }
+              
+              android.util.Log.e("MyTestModule", "Possible error code: $errorCode")
+              
+              val errorMessage = """
+                Exception Type: ${exception.javaClass.name}
+                Message: ${exception.message}
+                Error Code: $errorCode
+                Cause: ${exception.cause}
+              """.trimIndent()
+              
+              promise.reject("AGE_SIGNALS_ERROR", errorMessage, exception)
+            }
+          }
+        
+      } catch (e: Exception) {
+        android.util.Log.e("MyTestModule", "Exception in getAgeSignals setup", e)
+        promise.reject("ERROR", "Failed: ${e.javaClass.name}: ${e.message}", e)
       }
-      .addOnFailureListener { exception ->
-        // Currently throws: UnsupportedOperationException: Not yet implemented
-      }
-  } catch (e: Exception) {
-    promise.reject("ERROR", "Failed: ${e.message}", e)
-  }
-}
+    }
 ```
