@@ -2,14 +2,8 @@
 
 ## Overview
 
-This repository documents the implementation and investigation of Google's Play Age Signals API (beta) in an Expo React Native application. It includes proof that the API is currently non-functional and won't be active until January 1, 2026.
+This repository documents the implementation and investigation of Google's Play Age Signals API (beta) in an Expo React Native application.
 
-## Project Details
-
-- **Framework**: Expo (SDK 54)
-- **Platform**: Android
-- **Module**: Custom Expo module with Kotlin
-- **API**: Google Play Age Signals API `age-signals:0.0.1-beta01`
 
 ## The Issue
 
