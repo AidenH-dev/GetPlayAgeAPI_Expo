@@ -134,30 +134,3 @@ AsyncFunction("getAgeSignals") { promise: Promise ->
   }
 }
 ```
-
-## Workaround for Development
-
-Until January 1, 2026, use mock data:
-
-```kotlin
-AsyncFunction("getAgeSignals") { promise: Promise ->
-  try {
-    val context = appContext.reactContext
-    if (context == null) {
-      promise.reject("ERROR", "Context is null", null)
-      return@AsyncFunction
-    }
-
-    // Mock response until API is active
-    promise.resolve(mapOf(
-      "userStatus" to "API_NOT_ACTIVE_UNTIL_JAN_2026",
-      "installId" to "mock-${System.currentTimeMillis()}",
-      "timestamp" to System.currentTimeMillis(),
-      "note" to "Google Age Signals API backend activates January 1, 2026"
-    ))
-    
-  } catch (e: Exception) {
-    promise.reject("ERROR", "Failed: ${e.message}", e)
-  }
-}
-```
