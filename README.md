@@ -173,7 +173,6 @@ AsyncFunction("getAgeSignals") { promise: Promise ->
       // SUCCESS HANDLER
       // ----------------------------------------------------------------------------
       // This callback is triggered if the API successfully returns age signals
-      // NOTE: As of Oct 2025, this will NOT be called until Jan 1, 2026
       .addOnSuccessListener { ageSignalsResult ->
         // Check if we haven't already resolved/rejected the promise
         if (!isResolved) {
